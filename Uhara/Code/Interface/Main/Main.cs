@@ -386,6 +386,8 @@ public partial class Main : MainShared
         catch { }
     }
 
+    public static event Action OnUpdate;
+
     public void Update()
     {
         UpdateCounter++;
@@ -598,6 +600,7 @@ public partial class Main : MainShared
                             current[watcher.memoryWatcher.Name] = list;
                         }
                     }
+                    OnUpdate();
                 }
             }
             while (false);
@@ -686,6 +689,14 @@ public partial class Main : MainShared
                     {
                         //return new Tools.UnrealEngine.Default.CutsceneManager();
                     }
+                }
+            }
+
+            if (ToolsShared.ToolNames.ClickteamFusion.Data.Contains(engine))
+            {
+                if (ToolsShared.ToolNames.ClickteamFusion.Instance.Data.Contains(tool))
+                {
+                    return new Tools.ClickteamFusion.Instance();
                 }
             }
         }

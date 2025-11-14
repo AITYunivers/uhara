@@ -23,6 +23,7 @@
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>none</DebugType>
@@ -102,6 +103,7 @@
     <Compile Include="Code\Interface\ScanUtility.cs" />
     <Compile Include="Code\Interface\ToolsShared.cs" />
     <Compile Include="Code\Other\AsmBlocks.cs" />
+    <Compile Include="Code\Tools\ClickteamFusion\ClickteamFusion.Instance.cs" />
     <Compile Include="Code\Tools\Unity\DotNet\Instance\DotNet.Instance.cs" />
     <Compile Include="Code\Tools\Unity\DotNet\Instance\DotNet.Instance.InstanceDestroy.cs" />
     <Compile Include="Code\Tools\Unity\IL2CPP\Instance\IL2CPP.Instance.cs" />

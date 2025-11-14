@@ -1,4 +1,5 @@
-﻿using SharpDisasm;
+﻿using LiveSplit.ComponentUtil;
+using SharpDisasm;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -38,6 +39,24 @@ internal class TMemory : MainShared
         return TUtils.MultibyteToString(textBytes);
     }
 
+    internal static string ReadMemoryUnicodeString(Process process, ulong address)
+    {
+        ulong pos = address;
+        while (true)
+        {
+            byte[] bytes = ReadMemoryBytes(process, pos, 8);
+            for (int i = 0; i < bytes.Length; i += 2)
+            {
+                if (bytes[i] == 0 && bytes[i + 1] == 0)
+                {
+                    byte[] strBytes = ReadMemoryBytes(process, address, (int)(pos - address + (ulong)i));
+                    return Encoding.Unicode.GetString(strBytes);
+                }
+            }
+            pos += 8;
+        }
+    }
+
     internal static ulong[] ScanMultiple(Process process, string signature, string moduleName = null, int memoryProtection = -1)
     {
         List<ulong> resultsRaw = new List<ulong>();
@@ -65,6 +84,40 @@ internal class TMemory : MainShared
 
                     searchOffset += searchBytes.Length;
                     if ((ulong)searchOffset >= sections[i][1]) break;
+                }
+            }
+        }
+
+        return resultsRaw.ToArray();
+    }
+
+    internal static ulong[] ScanPagesMultiple(Process process, string signature, int memoryProtection = -1)
+    {
+        List<ulong> resultsRaw = new List<ulong>();
+        byte[] searchBytes = TSignature.GetBytes(signature);
+        string searchMask = TSignature.GetMask(signature);
+
+        List<ulong[]> pages = GetAllPages(process);
+
+        for (int i = 0; i < pages.Count; i++)
+        {
+            byte[] sectionBytes = ReadMemoryBytes(process, pages[i][0], (int)pages[i][1]);
+            if (sectionBytes != null && sectionBytes.Length > 0)
+            {
+                int searchOffset = 0;
+                while (true)
+                {
+                    searchOffset = FindInArray(sectionBytes, searchBytes, searchMask, searchOffset);
+                    if (searchOffset == -1) break;
+
+                    ulong foundAddress = pages[i][0] + (ulong)searchOffset;
+
+                    if (memoryProtection == -1) resultsRaw.Add(foundAddress);
+                    else if (GetMemoryProtection(process, foundAddress) == memoryProtection)
+                        resultsRaw.Add(foundAddress);
+
+                    searchOffset += searchBytes.Length;
+                    if ((ulong)searchOffset >= pages[i][1]) break;
                 }
             }
         }
@@ -546,6 +599,131 @@ internal class TMemory : MainShared
         return sections;
     }
 
+    // Collect my pages
+    public unsafe static List<ulong[]> GetAllPages(Process process)
+    {
+        List<ulong[]> pages = new List<ulong[]>();
+        IsWow64Process(process, out bool is64bit);
+        IEnumerable<MEMORY_BASIC_INFORMATION> memPages = EnumerateMemoryPages(process, is64bit, true);
+
+        foreach (MEMORY_BASIC_INFORMATION page in memPages)
+        {
+            pages.Add(new ulong[] { (ulong)page.BaseAddress, page.RegionSize });
+        }
+
+        if (pages.Count > 0) pages = pages.OrderBy(x => x[0]).ToList();
+        return pages;
+    }
+
+    [DllImport("kernel32", EntryPoint = nameof(IsWow64Process), ExactSpelling = true, SetLastError = true)]
+    static unsafe extern int IsWow64Process(
+        void* hProcess,
+        int* Wow64Process);
+
+    public unsafe static bool IsWow64Process(Process process, out bool isWow64)
+    {
+        int bWow64Process;
+        bool success = IsWow64Process((void*)process.Handle, &bWow64Process) != 0;
+
+        isWow64 = bWow64Process != 0;
+        return success;
+    }
+
+    public static IEnumerable<MEMORY_BASIC_INFORMATION> EnumerateMemoryPages(Process process, bool is64Bit, bool allPages)
+    {
+        ulong address = 0x10000, max = (ulong)(is64Bit ? 0x7FFFFFFEFFFF : 0x7FFEFFFF);
+
+        do
+        {
+            if (VirtualQuery(process, address, out MEMORY_BASIC_INFORMATION mbi) == 0)
+            {
+                break;
+            }
+
+            address += mbi.RegionSize;
+
+            if (mbi.State != MemState.MEM_COMMIT)
+            {
+                continue;
+            }
+
+            if (!allPages && (mbi.Protect & MemProtect.PAGE_GUARD) != 0)
+            {
+                continue;
+            }
+
+            if (!allPages && mbi.Type != MemType.MEM_PRIVATE)
+            {
+                continue;
+            }
+
+            yield return mbi;
+        } while (address < max);
+    }
+
+    [DllImport("kernel32", EntryPoint = "VirtualQueryEx", ExactSpelling = true, SetLastError = true)]
+    static unsafe extern ulong uVirtualQueryEx(
+        void* hProcess,
+        void* lpAddress,
+        MEMORY_BASIC_INFORMATION* lpBuffer,
+        ulong dwLength);
+
+    public unsafe static ulong VirtualQuery(Process process, ulong baseAddress, out MEMORY_BASIC_INFORMATION mbi)
+    {
+        fixed (MEMORY_BASIC_INFORMATION* pMbi = &mbi)
+        {
+            return uVirtualQueryEx((void*)process.Handle, (void*)baseAddress, pMbi, (ulong)sizeof(MEMORY_BASIC_INFORMATION));
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal unsafe struct MEMORY_BASIC_INFORMATION
+    {
+        public void* BaseAddress;
+        public void* AllocationBase;
+        public MemProtect AllocationProtect;
+        public ulong RegionSize;
+        public MemState State;
+        public MemProtect Protect;
+        public MemType Type;
+    }
+
+    public enum MemProtect : uint
+    {
+        PAGE_NOACCESS = 0x00000001,
+        PAGE_READONLY = 0x00000002,
+        PAGE_READWRITE = 0x00000004,
+        PAGE_WRITECOPY = 0x00000008,
+        PAGE_EXECUTE = 0x00000010,
+        PAGE_EXECUTE_READ = 0x00000020,
+        PAGE_EXECUTE_READWRITE = 0x00000040,
+        PAGE_EXECUTE_WRITECOPY = 0x00000080,
+        PAGE_GUARD = 0x00000100,
+        PAGE_NOCACHE = 0x00000200,
+        PAGE_WRITECOMBINE = 0x00000400
+    }
+
+    public enum MemState : uint
+    {
+        MEM_COMMIT = 0x00001000,
+        MEM_RESERVE = 0x00002000,
+        MEM_DECOMMIT = 0x00004000,
+        MEM_RELEASE = 0x00008000,
+        MEM_RESET = 0x00080000,
+        MEM_TOP_DOWN = 0x00100000,
+        MEM_WRITE_WATCH = 0x00200000,
+        MEM_PHYSICAL = 0x00400000,
+        MEM_RESET_UNDO = 0x01000000,
+        MEM_LARGE_PAGES = 0x20000000
+    }
+
+    public enum MemType : uint
+    {
+        MEM_PRIVATE = 0x0020000,
+        MEM_MAPPED = 0x0040000,
+        MEM_IMAGE = 0x1000000
+    }
+
     internal static byte[] GetPEHeader(Process process, ulong baseAddress)
     {
         byte[] dosHeader = ReadMemoryBytes(process, baseAddress, 0x40);
@@ -683,6 +861,19 @@ internal class TMemory : MainShared
             else if (typeof(T) == typeof(decimal)) return (T)(object)TUtils.ToDecimal(data);
         }
         return default(T);
+    }
+
+    internal static T ReadMemory<T>(Process process, ulong address, params int[] offsets) where T : unmanaged
+    {
+        ulong pos = ReadMemory<uint>(process, address);
+        for (int i = 0; i < offsets.Length - 1; i++)
+        {
+            pos = ReadMemory<uint>(process, pos + (ulong)offsets[i]);
+
+            if (pos == 0)
+                return default;
+        }
+        return ReadMemory<T>(process, (IntPtr)(pos + (ulong)offsets[offsets.Length - 1]));
     }
 
     internal static byte[] ReadMemoryBytes(Process process, ulong address, int size)

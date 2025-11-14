@@ -59,6 +59,16 @@ internal class ToolsShared
             }
         }
 
+        internal class ClickteamFusion
+        {
+            internal static readonly string[] Data = new string[] { "clickteamfusion", "clickteam fusion", "ctf" };
+
+            internal class Instance
+            {
+                internal static readonly string[] Data = new string[] { "instance" };
+            }
+        }
+
         internal class UnrealEngine
         {
             internal static readonly string[] Data = new string[] { "unrealengine" };
