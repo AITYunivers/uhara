@@ -73,6 +73,26 @@ public partial class Tools : MainShared
                 catch { }
             }
 
+            public void WatchAnimation(string watcherName, string objectName, int instanceIndex = 0)
+            {
+                try
+                {
+                    uint baseAddress = GetInstanceAddress(objectName, instanceIndex);
+                    uint ptr_roObjType = 0x18;
+
+                    short roObjType = TMemory.ReadMemory<short>(ProcessInstance, baseAddress + ptr_roObjType);
+                    if (roObjType != 2)
+                    {
+                        TUtils.Print("Object must be an Active!");
+                        return;
+                    }
+
+                    uint ptr_anim = 0x1DE;
+                    new PtrResolver().Watch<int>(watcherName, baseAddress + ptr_anim);
+                }
+                catch { }
+            }
+
             public void WatchCounter(string watcherName, string objectName, int instanceIndex = 0)
             {
                 try
@@ -255,7 +275,7 @@ public partial class Tools : MainShared
                 int roMaxIndex = TMemory.ReadMemory<int>(ProcessInstance, mVPointer + 4, ptr_roMaxIndex);
                 for (int i = 0; i < roMaxIndex; i++)
                 {
-                    ptr_ros[1] = i * 4;
+                    ptr_ros[1] = i * 8;
                     uint roAddress = TMemory.ReadMemory<uint>(ProcessInstance, mVPointer + 4, ptr_ros);
                     short roObjInfo = TMemory.ReadMemory<short>(ProcessInstance, roAddress + ptr_roObjInfo);
 
