@@ -1,7 +1,10 @@
-﻿using System;
+﻿using LiveSplit.ComponentUtil;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Net;
+using System.Security.AccessControl;
 using System.Text;
 
 public partial class Tools : MainShared
@@ -123,6 +126,67 @@ public partial class Tools : MainShared
                 }
                 catch { }
             }
+
+            public void WatchVisibility(string watcherName, string objectName, int instanceIndex = 0)
+            {
+                try
+                {
+                    uint baseAddress = GetInstanceAddress(objectName, instanceIndex);
+                    uint ptr_roObjType = 0x18;
+
+                    short roObjType = TMemory.ReadMemory<short>(ProcessInstance, baseAddress + ptr_roObjType);
+                    bool isSystem = roObjType != 2 && roObjType < 32;
+                    uint ptr_flags = isSystem ? 0x1EEu : 0x23Eu;
+
+                    visbilityWatchers.Add((watcherName, baseAddress + ptr_flags));
+                }
+                catch { }
+            }
+
+            public void RemoveOldWatcher(string watcherName)
+            {
+                int removed = 0;
+                for (int i = 0; i < MemoryWatchers.Count; i++)
+                    if (MemoryWatchers[i].Name == watcherName)
+                    {
+                        MemoryWatchers.RemoveAt(i);
+                        removed++;
+                        break;
+                    }
+
+                for (int i = 0; i < cv_ptrResolvers.Count; i++)
+                {
+                    if (cv_ptrResolvers[i].Item1 == watcherName)
+                    {
+                        cv_ptrResolvers.RemoveAt(i);
+                        removed++;
+                        break;
+                    }
+                }
+
+                for (int i = 0; i < counterVariables.Count; i++)
+                {
+                    if (counterVariables[i] == watcherName)
+                    {
+                        counterVariables.RemoveAt(i);
+                        removed++;
+                        break;
+                    }
+                }
+
+                for (int i = 0; i < visbilityWatchers.Count; i++)
+                {
+                    if (visbilityWatchers[i].Item1 == watcherName)
+                    {
+                        visbilityWatchers.RemoveAt(i);
+                        removed++;
+                        break;
+                    }
+                }
+
+                if (removed > 1)
+                    TUtils.Print($"Removed memory watcher named \"{watcherName}\"");
+            }
             #endregion
 
             internal static uint mVPointer;
@@ -130,6 +194,7 @@ public partial class Tools : MainShared
             internal Dictionary<string, List<short>> objectInfos = new Dictionary<string, List<short>>();
             internal List<(string, uint, uint)> cv_ptrResolvers = new List<(string, uint, uint)>();
             internal List<string> counterVariables = new List<string>();
+            internal List<(string, uint)> visbilityWatchers = new List<(string, uint)>();
 
             public Instance()
             {
@@ -146,6 +211,7 @@ public partial class Tools : MainShared
 
             private void OnUpdate()
             {
+                // Update type-changing CValue watchers
                 for (int i = 0; i < cv_ptrResolvers.Count; i++)
                 {
                     string watcherName = cv_ptrResolvers[i].Item1;
@@ -163,6 +229,7 @@ public partial class Tools : MainShared
                         if (MemoryWatchers[ii].Name != watcherName)
                             continue;
                         MemoryWatchers.RemoveAt(ii);
+                        TUtils.Print("Deleted " + watcherName + " in order to change type from " + oldType + " to " + currentType + ".");
                         break;
                     }
 
@@ -174,6 +241,14 @@ public partial class Tools : MainShared
                         ptrResolver.Watch<double>(watcherName, cvAddress + 0x8);
                 }
 
+                // Update visibility watchers
+                foreach ((string watcherName, uint flagsAddress) in visbilityWatchers)
+                {
+                    ushort flags = TMemory.ReadMemory<ushort>(ProcessInstance, flagsAddress);
+                    current[watcherName] = (flags & 0x20) != 0;
+                }
+
+                // Invert counter values
                 foreach (string counterName in counterVariables)
                 {
                     if (current.ContainsKey(counterName))
@@ -267,7 +342,7 @@ public partial class Tools : MainShared
 
             private uint GetInstanceAddress(string objectName, int instanceCount = 0)
             {
-                int[] ptr_roMaxIndex = new int[] { 0x8F2 };
+                int[] ptr_roMaxIndex = new int[] { 0x54 };
                 int[] ptr_ros = new int[] { 0x8D0, 0x0 };
                 uint ptr_roObjInfo = 0x12;
                 List<short> objInfos = objectInfos[objectName];
@@ -282,7 +357,10 @@ public partial class Tools : MainShared
                     if (objInfos.Contains(roObjInfo))
                     {
                         if (instanceCount == 0)
+                        {
+                            TUtils.Print($"Found instance for {objectName} at index {i} (Address: `{roAddress.ToString("X")}`)");
                             return roAddress;
+                        }
                         else instanceCount--;
                     }
                 }
