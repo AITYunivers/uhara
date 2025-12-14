@@ -75,6 +75,7 @@
       <HintPath>..\packages\System.Collections.Immutable.9.0.10\lib\net462\System.Collections.Immutable.dll</HintPath>
     </Reference>
     <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
     <Reference Include="System.Memory, Version=4.0.1.2, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>..\packages\System.Memory.4.5.5\lib\net461\System.Memory.dll</HintPath>
     </Reference>
@@ -147,16 +148,17 @@
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
     <Nullable>disable</Nullable>
-    <PostBuildEvent>copy "$(TargetPath)" "F:\Downloads\LiveSplit_1.8.16\Components\uhara9"
+    <PostBuildEvent>copy "$(TargetPath)" "F:\Downloads\LiveSplit_1.8.16\Components\uharaClickteamBeta"
+copy "$(TargetPath)" "E:\Autosplitters\.libs\uharaClickteamBeta"
 
 
 
 
-copy "$(TargetPath)" "$(TargetDir)uhara9"
+copy "$(TargetPath)" "$(TargetDir)uharaClickteamBeta"
 
 
 
-copy "$(TargetPath)" "$(SolutionDir)bin\uhara9"
+copy "$(TargetPath)" "$(SolutionDir)bin\uharaClickteamBeta"
 
 
 

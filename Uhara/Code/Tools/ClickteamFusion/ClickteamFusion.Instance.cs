@@ -1,10 +1,6 @@
 ﻿using LiveSplit.ComponentUtil;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Net;
-using System.Security.AccessControl;
 using System.Text;
 
 public partial class Tools : MainShared
@@ -132,15 +128,66 @@ public partial class Tools : MainShared
                 try
                 {
                     uint baseAddress = GetInstanceAddress(objectName, instanceIndex);
-                    uint ptr_roObjType = 0x18;
 
+                    uint ptr_roObjType = 0x18;
                     short roObjType = TMemory.ReadMemory<short>(ProcessInstance, baseAddress + ptr_roObjType);
                     bool isSystem = roObjType != 2 && roObjType < 32;
-                    uint ptr_flags = isSystem ? 0x1EEu : 0x23Eu;
 
+                    uint ptr_flags = isSystem ? 0x1EEu : 0x23Eu;
                     visbilityWatchers.Add((watcherName, baseAddress + ptr_flags));
                 }
                 catch { }
+            }
+
+            public void WatchMovementSpeed(string watcherName, string objectName, int instanceIndex = 0)
+            {
+                try
+                {
+                    uint baseAddress = GetInstanceAddress(objectName, instanceIndex);
+
+                    uint ptr_rcSpeed = 0xF0;
+                    new PtrResolver().Watch<int>(watcherName, baseAddress + ptr_rcSpeed);
+                }
+                catch { }
+            }
+
+            public void WatchObjectCount(string watcherName, string objectName, int instanceCount = 0)
+            {
+                try
+                {
+                    int[] ptr_oiMaxIndex = new int[] { 0x54 };
+                    int[] ptr_ois = new int[] { 0x58 };
+                    uint ptr_oiObjInfo = 0x0;
+                    uint ptr_oiCount = 0x10;
+                    List<short> objInfos = objectInfos[objectName];
+
+                    int oiMaxIndex = TMemory.ReadMemory<int>(ProcessInstance, mVPointer + 8, ptr_oiMaxIndex);
+                    uint oiAddress = TMemory.ReadMemory<uint>(ProcessInstance, mVPointer + 8, ptr_ois);
+                    for (uint i = 0; i < oiMaxIndex; i++)
+                    {
+                        uint ptrOffset = i * 146;
+                        short roObjInfo = TMemory.ReadMemory<short>(ProcessInstance, oiAddress + ptrOffset + ptr_oiObjInfo);
+
+                        if (objInfos.Contains(roObjInfo))
+                        {
+                            if (instanceCount == 0)
+                            {
+                                new PtrResolver().Watch<int>(watcherName, oiAddress + ptrOffset + ptr_oiCount);
+                                break;
+                            }
+                            else instanceCount--;
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            public bool WatcherExists(string watcherName)
+            {
+                foreach (MemoryWatcher watcher in MemoryWatchers)
+                    if (watcher.Name == watcherName)
+                        return true;
+                return false;
             }
 
             public void RemoveOldWatcher(string watcherName)
