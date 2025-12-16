@@ -1,6 +1,7 @@
 ﻿using LiveSplit.ComponentUtil;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text;
 
 public partial class Tools : MainShared
@@ -245,15 +246,35 @@ public partial class Tools : MainShared
 
             public Instance()
             {
-                mVPointer = GetMvPointer();
-                CacheObjectInfos();
+                Main.OnUpdate += OnUpdate;
+            }
+
+            public void Initialize(int? pointer = null, bool cacheObjects = true)
+            {
+                Stopwatch sw = Stopwatch.StartNew();
+                if (pointer == null)
+                {
+                    mVPointer = GetMvPointer();
+
+                    if (mVPointer == 0)
+                        throw new Exception("Failed to find MV Pointer");
+
+                    sw.Stop();
+                    TUtils.Print($"Found MV Pointer at 0x{mVPointer - (uint)ProcessInstance.MainModule.BaseAddress:X2} in {sw.ElapsedMilliseconds}ms");
+                }
+                else
+                    mVPointer = (uint)pointer + (uint)ProcessInstance.MainModule.BaseAddress;
+
+                sw = Stopwatch.StartNew();
+                if (cacheObjects)
+                    CacheObjectInfos();
+                sw.Stop();
+                TUtils.Print($"Cached {objectInfos.Count} Object Infos in {sw.ElapsedMilliseconds}ms");
 
                 FusionBuild = TMemory.ReadMemory<int>(ProcessInstance, mVPointer, 0xC);
                 new PtrResolver().Watch<int>("Frame", mVPointer, 0x1F0);
                 new PtrResolver().Watch<int>("FrameCount", mVPointer, 0xC4);
                 new PtrResolver().WatchString("FrameName", mVPointer + 4, 0x10, 0x0);
-
-                Main.OnUpdate += OnUpdate;
             }
 
             private void OnUpdate()
@@ -310,29 +331,27 @@ public partial class Tools : MainShared
 
             private uint GetMvPointer()
             {
-                TUtils.Print("GetMvPointer Called");
                 string headerBytes = "";
                 foreach (byte b in Encoding.ASCII.GetBytes("PAMU"))
                     headerBytes += b.ToString("X2") + " ";
 
                 uint header = 0;
                 ulong[] results = TMemory.ScanPagesMultiple(ProcessInstance, headerBytes.Trim());
-                TUtils.Print($"Found {results.Length} Headers with Sigscan {headerBytes.Trim()}");
                 foreach (ulong item in results)
                 {
-                    //TUtils.Print($"Checking header: {item.ToString("X2")}");
                     int runtimeVersion = TMemory.ReadMemory<int>(ProcessInstance, item + 4);
                     if (runtimeVersion == 770)
                     {
-                        TUtils.Print("Found Header at " + item.ToString("X2"));
                         header = (uint)item;
                         break;
                     }
                 }
 
-                TUtils.Print("Finished Header Scan");
                 if (header == 0)
+                {
+                    TUtils.Print("Failed to find MV pointer");
                     return 0;
+                }
 
                 headerBytes = "";
                 foreach (byte b in BitConverter.GetBytes((int)header))
@@ -345,17 +364,13 @@ public partial class Tools : MainShared
                     return 0;
                 }
 
-                TUtils.Print($"Found {results.Length} possible MV pointers with Sigscan {headerBytes.Trim()}");
-
                 uint low = (uint)ProcessInstance.MainModule.BaseAddress;
                 uint high = low + (uint)ProcessInstance.MainModule.ModuleMemorySize;
                 foreach (ulong item in headerResults)
                 {
-                    //TUtils.Print($"Checking possible MV pointer: {item.ToString("X2")}");
                     if (item < low || item > high)
                         continue;
 
-                    TUtils.Print("Found MV pointer at " + item.ToString("X2"));
                     return (uint)item;
                 }
 
